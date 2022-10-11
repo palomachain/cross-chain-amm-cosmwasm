@@ -2,7 +2,9 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint256};
 
 #[cw_serde]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub deadline: u64, // Pool first add liquidity period
+}
 
 #[cw_serde]
 pub enum ExecuteMsg {
@@ -24,6 +26,7 @@ pub enum ExecuteMsg {
         amount: Uint256,
     },
     AddLiquidity {
+        pool_id: Uint256,
         chain_id: Uint256,
         token: String,
         amount: Uint256,
