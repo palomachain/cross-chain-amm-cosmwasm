@@ -40,14 +40,16 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 """
 
 [dependencies]
-cosmwasm-schema = "1.1.4"
-cosmwasm-std = "1.1.4"
-cosmwasm-storage = "1.1.4"
-cw-storage-plus = "0.15.1"
-cw2 = "0.15.1"
+cosmwasm-schema = "1.1.5"
+cosmwasm-std = "1.1.5"
+cosmwasm-storage = "1.1.5"
+cw-storage-plus = "0.16.0"
+cw2 = "0.16.0"
 schemars = "0.8.11"
-serde = { version = "1.0.145", default-features = false, features = ["derive"] }
+serde = { version = "1.0.147", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.37" }
+ethabi = "17.2.0"
+getrandom = { version = "0.2.8", features = ["custom"] }
 
 [dev-dependencies]
-cw-multi-test = "0.15.1"
+cw-multi-test = "0.16.0"
