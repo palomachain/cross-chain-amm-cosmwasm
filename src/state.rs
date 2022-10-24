@@ -1,7 +1,7 @@
+use crate::msg::TargetContractInfo;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Timestamp, Uint256};
 use cw_storage_plus::{Item, Map};
-use crate::msg::TargetContractInfo;
 
 #[cw_serde]
 pub struct PoolInfo {

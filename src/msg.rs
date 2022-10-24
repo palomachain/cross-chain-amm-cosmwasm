@@ -9,17 +9,17 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    RegisterChain{
+    RegisterChain {
         chain_id: Uint256,
         factory: String,
     },
-    CreatePool{
+    CreatePool {
         chain0_id: Uint256,
         chain1_id: Uint256,
         token0: String,
         token1: String,
         chain0_init_depositor: String,
-        chain1_init_depositor: String
+        chain1_init_depositor: String,
     },
     Swap {
         chain_from_id: Uint256,
@@ -36,7 +36,7 @@ pub enum ExecuteMsg {
         token: String,
         amount: Uint256,
         sender: String,
-        receiver: Addr
+        receiver: Addr,
     },
     RemoveLiquidity {
         chain0_id: Uint256,
@@ -46,7 +46,7 @@ pub enum ExecuteMsg {
         receiver0: String,
         receiver1: String,
         amount: Uint256,
-    }
+    },
 }
 
 #[cw_serde]
