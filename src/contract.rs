@@ -1,3 +1,5 @@
+//! Execute cross chain transactions.
+
 use crate::ContractError::PoolExists;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -19,12 +21,8 @@ use crate::state::{
 };
 
 const MIN_LIQUIDITY: u16 = 1000u16;
-/*
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:cross-chain-amm-cosmwasm";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-*/
 
+/// Instantiate the contract. Initialize the pools.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -38,6 +36,7 @@ pub fn instantiate(
     Ok(Response::new())
 }
 
+/// Execute the contract. See ExecuteMsg submessages for details.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
@@ -632,6 +631,7 @@ fn remove_liquidity(
     Ok(response)
 }
 
+/// Query data from this contract. Currently no query interface is provided.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
     unimplemented!()
