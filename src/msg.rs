@@ -6,8 +6,6 @@ use cosmwasm_std::{Addr, Binary, CustomMsg, Uint256};
 /// Arguments to instantiate our contract.
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// TODO: replace with job ids.
-    pub target_contract_info: TargetContractInfo,
     /// Deadline for when the pool first has liquidity.
     pub deadline: u64,
 }
@@ -88,26 +86,11 @@ pub enum ExecuteMsg {
     },
 }
 
-/// TODO: replace with job_id(s).
-#[cw_serde]
-pub struct TargetContractInfo {
-    /// TODO: remove
-    pub method: String,
-    /// TODO: remove
-    pub chain_id: String,
-    /// TODO: remove
-    pub compass_id: String,
-    /// TODO: remove
-    pub contract_address: String,
-    /// TODO: remove
-    pub smart_contract_abi: String,
-}
-
 /// Message struct for cross-chain calls.
 #[cw_serde]
 pub struct PalomaMsg {
-    /// TODO: replace with job_id
-    pub target_contract_info: TargetContractInfo,
+    /// The ID of the paloma scheduled job to run.
+    pub job_id: String,
     /// The payload, ABI encoded for the target chain.
     pub payload: Binary,
 }

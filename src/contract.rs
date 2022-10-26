@@ -11,13 +11,12 @@ use ethabi::{Address, Contract, Function, Param, ParamType, StateMutability, Tok
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::str::FromStr;
-// use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, PalomaMsg, QueryMsg};
 use crate::state::{
     LiquidityQueueElement, PoolInfo, PoolMetaInfo, QueueID, DEADLINE, LIQUIDITY, LIQUIDITY_QUEUE,
-    LIQUIDITY_QUEUE_IDS, POOLS_COUNT, POOLS_INFO, POOL_FACTORIES, POOL_IDS, TARGET_CONTRACT_INFO,
+    LIQUIDITY_QUEUE_IDS, POOLS_COUNT, POOLS_INFO, POOL_FACTORIES, POOL_IDS,
 };
 
 const MIN_LIQUIDITY: u16 = 1000u16;
@@ -30,7 +29,6 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    TARGET_CONTRACT_INFO.save(deps.storage, &msg.target_contract_info)?;
     POOLS_COUNT.save(deps.storage, &Uint256::zero())?;
     DEADLINE.save(deps.storage, &msg.deadline)?;
     Ok(Response::new())
@@ -182,9 +180,6 @@ fn create_pool(
             length: 0,
         },
     )?;
-    let binding = chain0_id.to_be_bytes();
-    let chain_id_key = binding.as_slice();
-    let factory = POOL_FACTORIES.load(deps.storage, chain_id_key)?;
     #[allow(deprecated)]
     let contract = Contract {
         constructor: None,
@@ -215,42 +210,33 @@ fn create_pool(
         fallback: false,
     };
 
-    let mut target_contract_info = TARGET_CONTRACT_INFO.load(deps.storage)?;
-    target_contract_info.contract_address = factory;
-    target_contract_info.chain_id = chain0_id.to_string();
-    let msg0 = CosmosMsg::Custom(PalomaMsg {
-        target_contract_info: target_contract_info.clone(),
-        payload: Binary(
-            contract
-                .function("create_pool")
-                .unwrap()
-                .encode_input(&[
-                    Token::Address(Address::from_str(token0.as_str()).unwrap()),
-                    Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
-                ])
-                .unwrap(),
-        ),
-    });
-    let binding = chain1_id.to_be_bytes();
-    let chain_id_key = binding.as_slice();
-    let factory = POOL_FACTORIES.load(deps.storage, chain_id_key)?;
-    target_contract_info.contract_address = factory;
-    target_contract_info.chain_id = chain1_id.to_string();
-    let msg1 = CosmosMsg::Custom(PalomaMsg {
-        target_contract_info,
-        payload: Binary(
-            contract
-                .function("create_pool")
-                .unwrap()
-                .encode_input(&[
-                    Token::Address(Address::from_str(token1.as_str()).unwrap()),
-                    Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
-                ])
-                .unwrap(),
-        ),
-    });
-    let response = Response::new().add_message(msg0).add_message(msg1);
-    Ok(response)
+    Ok(Response::new()
+        .add_message(CosmosMsg::Custom(PalomaMsg {
+            job_id: POOL_FACTORIES.load(deps.storage, chain0_id.to_be_bytes().as_slice())?,
+            payload: Binary(
+                contract
+                    .function("create_pool")
+                    .unwrap()
+                    .encode_input(&[
+                        Token::Address(Address::from_str(token0.as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                    ])
+                    .unwrap(),
+            ),
+        }))
+        .add_message(CosmosMsg::Custom(PalomaMsg {
+            job_id: POOL_FACTORIES.load(deps.storage, chain1_id.to_be_bytes().as_slice())?,
+            payload: Binary(
+                contract
+                    .function("create_pool")
+                    .unwrap()
+                    .encode_input(&[
+                        Token::Address(Address::from_str(token1.as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                    ])
+                    .unwrap(),
+            ),
+        })))
 }
 
 fn swap(
@@ -587,48 +573,35 @@ fn remove_liquidity(
         fallback: false,
     };
 
-    let mut target_contract_info = TARGET_CONTRACT_INFO.load(deps.storage)?;
-    let binding = chain0_id.to_be_bytes();
-    let chain_id_key = binding.as_slice();
-    let factory = POOL_FACTORIES.load(deps.storage, chain_id_key)?;
-    target_contract_info.contract_address = factory;
-    target_contract_info.chain_id = chain0_id.to_string();
-    let msg0 = CosmosMsg::Custom(PalomaMsg {
-        target_contract_info: target_contract_info.clone(),
-        payload: Binary(
-            contract
-                .function("remove_liquidity")
-                .unwrap()
-                .encode_input(&[
-                    Token::Uint(Uint::from_str(chain0_id.to_string().as_str()).unwrap()),
-                    Token::Uint(Uint::from_str(amount0.to_string().as_str()).unwrap()),
-                    Token::Address(Address::from_str(receiver0.as_str()).unwrap()),
-                ])
-                .unwrap(),
-        ),
-    });
-    let binding = chain1_id.to_be_bytes();
-    let chain_id_key = binding.as_slice();
-    let factory = POOL_FACTORIES.load(deps.storage, chain_id_key)?;
-    target_contract_info.contract_address = factory;
-    target_contract_info.chain_id = chain1_id.to_string();
-    let msg1 = CosmosMsg::Custom(PalomaMsg {
-        target_contract_info,
-        payload: Binary(
-            contract
-                .function("remove_liquidity")
-                .unwrap()
-                .encode_input(&[
-                    Token::Uint(Uint::from_str(chain1_id.to_string().as_str()).unwrap()),
-                    Token::Uint(Uint::from_str(amount1.to_string().as_str()).unwrap()),
-                    Token::Address(Address::from_str(receiver1.as_str()).unwrap()),
-                ])
-                .unwrap(),
-        ),
-    });
-    let response = Response::new().add_message(msg0).add_message(msg1);
-
-    Ok(response)
+    Ok(Response::new()
+        .add_message(CosmosMsg::Custom(PalomaMsg {
+            job_id: POOL_FACTORIES.load(deps.storage, &chain0_id.to_be_bytes())?,
+            payload: Binary(
+                contract
+                    .function("remove_liquidity")
+                    .unwrap()
+                    .encode_input(&[
+                        Token::Uint(Uint::from_str(chain0_id.to_string().as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(amount0.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(receiver0.as_str()).unwrap()),
+                    ])
+                    .unwrap(),
+            ),
+        }))
+        .add_message(CosmosMsg::Custom(PalomaMsg {
+            job_id: POOL_FACTORIES.load(deps.storage, &chain1_id.to_be_bytes())?,
+            payload: Binary(
+                contract
+                    .function("remove_liquidity")
+                    .unwrap()
+                    .encode_input(&[
+                        Token::Uint(Uint::from_str(chain1_id.to_string().as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(amount1.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(receiver1.as_str()).unwrap()),
+                    ])
+                    .unwrap(),
+            ),
+        })))
 }
 
 /// Query data from this contract. Currently no query interface is provided.

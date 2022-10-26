@@ -1,6 +1,5 @@
 //! The persistent state of the contract, including pool info and associated queues.
 
-use crate::msg::TargetContractInfo;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Timestamp, Uint256};
 use cw_storage_plus::{Item, Map};
@@ -43,10 +42,7 @@ pub struct PoolMetaInfo {
     pub token1: String,
 }
 
-/// TODO: Replace with job_id.
-pub const TARGET_CONTRACT_INFO: Item<TargetContractInfo> = Item::new("target_contract_info");
-
-/// Mapping from `chain_id` to factory contract.
+/// Mapping from `chain_id` to factory contract `job_id`.
 pub const POOL_FACTORIES: Map<&[u8], String> = Map::new("pool_factories");
 
 /// Mapping from `chain_id` to information about its creation.
