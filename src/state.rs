@@ -4,9 +4,12 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Timestamp, Uint256};
 use cw_storage_plus::{Item, Map};
 
+/// Target chain information.
 #[cw_serde]
 pub struct ChainInfo {
+    /// Chain name string. i.e. "Ethereum mainnet".
     pub chain_name: String,
+    /// Factory Vyper smart contract address on the target chain.
     pub factory: String,
 }
 
@@ -48,6 +51,7 @@ pub struct PoolMetaInfo {
     pub token1: String,
 }
 
+/// Configuration state.
 #[cw_serde]
 pub struct State {
     /// Administrator.
@@ -62,6 +66,7 @@ pub struct State {
     pub fee: u16,
 }
 
+/// Item for storing configuration state.
 pub const STATE: Item<State> = Item::new("state");
 
 /// Mapping from `chain_id` to factory contract `job_id`.

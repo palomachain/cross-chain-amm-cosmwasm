@@ -189,9 +189,9 @@ fn create_pool(
         let pool_info = POOLS_INFO.load(deps.storage, id.to_be_bytes().as_slice())?;
         if (pool_info.amount0.is_zero() || pool_info.amount1.is_zero())
             && pool_info
-            .timestamp
-            .plus_seconds(STATE.load(deps.storage)?.deadline)
-            < env.block.time
+                .timestamp
+                .plus_seconds(STATE.load(deps.storage)?.deadline)
+                < env.block.time
         {
             pool_id = id;
         } else {
@@ -235,7 +235,7 @@ fn create_pool(
         Ok(state)
     })?;
     #[allow(deprecated)]
-        let contract = Contract {
+    let contract = Contract {
         constructor: None,
         functions: BTreeMap::from_iter(vec![(
             "create_pool".to_string(),
@@ -297,6 +297,7 @@ fn create_pool(
         })))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn swap(
     deps: DepsMut,
     info: MessageInfo,
@@ -333,7 +334,7 @@ fn swap(
             .mul(Uint512::from(amount))
             .div(Uint512::from(100_000_000u32)),
     )
-        .unwrap();
+    .unwrap();
     let to_amount;
     if is_chain0 {
         to_amount = Uint256::try_from(
@@ -346,7 +347,7 @@ fn swap(
                         .add(Uint512::from(pool_info.amount0).mul(Uint512::from(10_000u16))),
                 ),
         )
-            .unwrap();
+        .unwrap();
         pool_info.amount0.add_assign(amount - management_fee);
         pool_info.amount1.sub_assign(to_amount);
     } else {
@@ -360,13 +361,13 @@ fn swap(
                         .add(Uint512::from(pool_info.amount1).mul(Uint512::from(10_000u16))),
                 ),
         )
-            .unwrap();
+        .unwrap();
         pool_info.amount1.add_assign(amount - management_fee);
         pool_info.amount0.sub_assign(to_amount);
     }
     POOLS_INFO.save(deps.storage, pool_id_key, &pool_info)?;
     #[allow(deprecated)]
-        let contract = Contract {
+    let contract = Contract {
         constructor: None,
         functions: BTreeMap::from_iter(vec![
             (
@@ -457,6 +458,7 @@ fn swap(
         })))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_liquidity(
     deps: DepsMut,
     info: MessageInfo,
@@ -573,7 +575,7 @@ fn add_liquidity(
                                     * Uint512::from(pool_info.amount0)
                                     / Uint512::from(pool_info.amount1),
                             )
-                                .unwrap()
+                            .unwrap()
                         } else {
                             pool_info.pending_amount0 -= liquidity_queue.amount;
                             Uint256::try_from(
@@ -581,7 +583,7 @@ fn add_liquidity(
                                     * Uint512::from(pool_info.amount1)
                                     / Uint512::from(pool_info.amount0),
                             )
-                                .unwrap()
+                            .unwrap()
                         };
                         if input_amount > new_amount {
                             input_amount -= new_amount;
@@ -604,14 +606,14 @@ fn add_liquidity(
                                 Uint512::from(queue_amount) * Uint512::from(pool_info.amount0)
                                     / Uint512::from(pool_info.amount1),
                             )
-                                .unwrap()
+                            .unwrap()
                         } else {
                             pool_info.pending_amount0 -= queue_amount;
                             Uint256::try_from(
                                 Uint512::from(queue_amount) * Uint512::from(pool_info.amount1)
                                     / Uint512::from(pool_info.amount0),
                             )
-                                .unwrap()
+                            .unwrap()
                         };
                         queue_amount = Uint256::zero();
                         input_amount = Uint256::zero();
@@ -632,14 +634,14 @@ fn add_liquidity(
                                 Uint512::from(queue_amount) * Uint512::from(pool_info.amount0)
                                     / Uint512::from(pool_info.amount1),
                             )
-                                .unwrap()
+                            .unwrap()
                         } else {
                             pool_info.pending_amount0 -= queue_amount;
                             Uint256::try_from(
                                 Uint512::from(queue_amount) * Uint512::from(pool_info.amount1)
                                     / Uint512::from(pool_info.amount0),
                             )
-                                .unwrap()
+                            .unwrap()
                         };
 
                         if is_chain0 {
@@ -666,12 +668,12 @@ fn add_liquidity(
                     Uint512::from(input_token0) * Uint512::from(pool_info.total_liquidity)
                         / Uint512::from(pool_info.amount0),
                 )
-                    .unwrap();
+                .unwrap();
                 let liq1 = Uint256::try_from(
                     Uint512::from(input_token1) * Uint512::from(pool_info.total_liquidity)
                         / Uint512::from(pool_info.amount1),
                 )
-                    .unwrap();
+                .unwrap();
                 pool_info.amount0 -= input_token0;
                 pool_info.amount1 -= input_token1;
                 let liq = min(liq0, liq1);
@@ -785,7 +787,7 @@ fn remove_liquidity(
         },
     )?;
     #[allow(deprecated)]
-        let contract = Contract {
+    let contract = Contract {
         constructor: None,
         functions: BTreeMap::from_iter(vec![(
             "remove_liquidity".to_string(),

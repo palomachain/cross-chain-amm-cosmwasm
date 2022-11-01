@@ -7,6 +7,7 @@ use cosmwasm_std::{Addr, Binary, CustomMsg, Uint256};
 /// Arguments to instantiate our contract.
 #[cw_serde]
 pub struct InstantiateMsg {
+    /// Paloma address that will run transactions with target chain event information.
     pub event_tracker: Addr,
     /// Deadline for when the pool first has liquidity.
     pub deadline: u64,
@@ -88,10 +89,15 @@ pub enum ExecuteMsg {
         /// Amount to transfer.
         amount: Uint256,
     },
+    /// Update configurations.
     UpdateConfig {
+        /// Interval before trades are considered invalid.
         new_deadline: Option<u64>,
+        /// Management fee.
         new_fee: Option<u16>,
+        /// Administrator.
         new_admin: Option<Addr>,
+        /// Event tracker from target chains.
         new_event_tracker: Option<Addr>,
     },
 }
@@ -109,28 +115,51 @@ pub struct PalomaMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
+    /// Returns registered chain information.
     #[returns(ChainInfo)]
-    ChainInfo { chain_id: Uint256 },
-
-    #[returns(Uint256)]
-    PoolId {
-        chain0_id: Uint256,
-        chain1_id: Uint256,
-        token0: String,
-        token1: String,
+    ChainInfo {
+        /// Chain Id.
+        chain_id: Uint256,
     },
 
+    /// Returns pool_id number from chain and token information.
+    #[returns(Uint256)]
+    PoolId {
+        /// Chain 0 Id.
+        chain0_id: Uint256,
+        /// Chain 1 Id.
+        chain1_id: Uint256,
+        /// Token address on chain 0.
+        token0: String,
+        /// Token address on chain 1.
+        token1: String,
+    },
+    /// Returns pool information from pool_id.
     #[returns(PoolInfo)]
-    PoolInfo { pool_id: Uint256 },
+    PoolInfo {
+        /// Pool id.
+        pool_id: Uint256,
+    },
 
+    /// Returns state information.
     #[returns(State)]
     State {},
 
+    /// Returns liquidity queue information.
     #[returns(QueueID)]
-    LiquidityQueue { pool_id: Uint256 },
+    LiquidityQueue {
+        /// Pool id.
+        pool_id: Uint256,
+    },
 
+    /// Returns liquidity queue element data from pool_id and queue_id.
     #[returns(LiquidityQueueElement)]
-    LiquidityQueueElement { pool_id: Uint256, queue_id: u64 },
+    LiquidityQueueElement {
+        /// Pool id.
+        pool_id: Uint256,
+        /// Queue id.
+        queue_id: u64,
+    },
 }
 
 impl CustomMsg for PalomaMsg {}
