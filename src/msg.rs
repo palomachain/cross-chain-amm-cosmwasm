@@ -1,11 +1,13 @@
 //! Messages used to instantiate/execute/query the contract.
 
+use crate::state::{ChainInfo, LiquidityQueueElement, PoolInfo, QueueID, State};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, CustomMsg, Uint256};
 
 /// Arguments to instantiate our contract.
 #[cw_serde]
 pub struct InstantiateMsg {
+    pub event_tracker: Addr,
     /// Deadline for when the pool first has liquidity.
     pub deadline: u64,
 }
@@ -17,6 +19,8 @@ pub enum ExecuteMsg {
     RegisterChain {
         /// The chain ID.
         chain_id: Uint256,
+        /// Chain name i.e. "Ethereum mainnet".
+        chain_name: String,
         /// The factory contract we will use to mint tokens.
         factory: String,
     },
@@ -34,6 +38,8 @@ pub enum ExecuteMsg {
         chain0_init_depositor: String,
         /// Target chain depositor.
         chain1_init_depositor: String,
+        /// Swap fee amount.
+        fee: u16,
     },
     /// Initiate a swap.
     Swap {
@@ -45,8 +51,6 @@ pub enum ExecuteMsg {
         token_from: String,
         /// Target chain token.
         token_to: String,
-        /// Source account.
-        sender: String,
         /// Target account.
         receiver: String,
         /// Amount to transfer.
@@ -84,6 +88,12 @@ pub enum ExecuteMsg {
         /// Amount to transfer.
         amount: Uint256,
     },
+    UpdateConfig {
+        new_deadline: Option<u64>,
+        new_fee: Option<u16>,
+        new_admin: Option<Addr>,
+        new_event_tracker: Option<Addr>,
+    },
 }
 
 /// Message struct for cross-chain calls.
@@ -98,6 +108,29 @@ pub struct PalomaMsg {
 /// Currently cc-amm provides no queries.
 #[cw_serde]
 #[derive(QueryResponses)]
-pub enum QueryMsg {}
+pub enum QueryMsg {
+    #[returns(ChainInfo)]
+    ChainInfo { chain_id: Uint256 },
+
+    #[returns(Uint256)]
+    PoolId {
+        chain0_id: Uint256,
+        chain1_id: Uint256,
+        token0: String,
+        token1: String,
+    },
+
+    #[returns(PoolInfo)]
+    PoolInfo { pool_id: Uint256 },
+
+    #[returns(State)]
+    State {},
+
+    #[returns(QueueID)]
+    LiquidityQueue { pool_id: Uint256 },
+
+    #[returns(LiquidityQueueElement)]
+    LiquidityQueueElement { pool_id: Uint256, queue_id: u64 },
+}
 
 impl CustomMsg for PalomaMsg {}

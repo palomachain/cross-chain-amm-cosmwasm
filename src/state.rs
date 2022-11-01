@@ -4,11 +4,15 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Timestamp, Uint256};
 use cw_storage_plus::{Item, Map};
 
+#[cw_serde]
+pub struct ChainInfo {
+    pub chain_name: String,
+    pub factory: String,
+}
+
 /// Metadata definiting a pool.
 #[cw_serde]
 pub struct PoolInfo {
-    /// The ID for this pool.
-    pub pool_id: Uint256,
     /// Chain/token pairs to trade.
     pub meta: PoolMetaInfo,
     /// Source amount.
@@ -27,6 +31,8 @@ pub struct PoolInfo {
     pub chain0_init_depositor: String,
     /// Initial creator of `chain1`.
     pub chain1_init_depositor: String,
+    /// swapping fee.
+    pub fee: u16,
 }
 
 /// The chain/token pair which defines a pool.
@@ -42,20 +48,30 @@ pub struct PoolMetaInfo {
     pub token1: String,
 }
 
+#[cw_serde]
+pub struct State {
+    /// Administrator.
+    pub admin: Addr,
+    /// Event tracker from target chains.
+    pub event_tracker: Addr,
+    /// Current numbxer of pools.
+    pub pools_count: Uint256,
+    /// Interval before trades are considered invalid.
+    pub deadline: u64,
+    /// Management fee.
+    pub fee: u16,
+}
+
+pub const STATE: Item<State> = Item::new("state");
+
 /// Mapping from `chain_id` to factory contract `job_id`.
-pub const POOL_FACTORIES: Map<&[u8], String> = Map::new("pool_factories");
+pub const CHAIN_INFO: Map<&[u8], ChainInfo> = Map::new("chain_info");
 
 /// Mapping from `chain_id` to information about its creation.
 pub const POOLS_INFO: Map<&[u8], PoolInfo> = Map::new("pools_info");
 
 /// Mapping from meta info key to pool id.
 pub const POOL_IDS: Map<&[u8], Uint256> = Map::new("pools_ids");
-
-/// Current numbxer of pools.
-pub const POOLS_COUNT: Item<Uint256> = Item::new("pools_count");
-
-/// Interval before trades are considered invalid.
-pub const DEADLINE: Item<u64> = Item::new("deadline");
 
 /// Mapping from `(pool_id, receiver)` to an amount.
 pub const LIQUIDITY: Map<(&[u8], &[u8]), Uint256> = Map::new("liquidity");

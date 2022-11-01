@@ -8,15 +8,16 @@ use cosmwasm_std::{
     StdResult, Uint256, Uint512,
 };
 use ethabi::{Address, Contract, Function, Param, ParamType, StateMutability, Token, Uint};
-use std::cmp::Ordering;
+use std::cmp::{min, Ordering};
 use std::collections::BTreeMap;
+use std::ops::{Add, AddAssign, Div, Mul, SubAssign};
 use std::str::FromStr;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, PalomaMsg, QueryMsg};
 use crate::state::{
-    LiquidityQueueElement, PoolInfo, PoolMetaInfo, QueueID, DEADLINE, LIQUIDITY, LIQUIDITY_QUEUE,
-    LIQUIDITY_QUEUE_IDS, POOLS_COUNT, POOLS_INFO, POOL_FACTORIES, POOL_IDS,
+    ChainInfo, LiquidityQueueElement, PoolInfo, PoolMetaInfo, QueueID, State, CHAIN_INFO,
+    LIQUIDITY, LIQUIDITY_QUEUE, LIQUIDITY_QUEUE_IDS, POOLS_INFO, POOL_IDS, STATE,
 };
 
 const MIN_LIQUIDITY: u16 = 1000u16;
@@ -26,11 +27,19 @@ const MIN_LIQUIDITY: u16 = 1000u16;
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    POOLS_COUNT.save(deps.storage, &Uint256::zero())?;
-    DEADLINE.save(deps.storage, &msg.deadline)?;
+    STATE.save(
+        deps.storage,
+        &State {
+            admin: info.sender,
+            event_tracker: msg.event_tracker,
+            pools_count: Uint256::zero(),
+            deadline: msg.deadline,
+            fee: 3000,
+        },
+    )?;
     Ok(Response::new())
 }
 
@@ -50,6 +59,7 @@ pub fn execute(
             token1,
             chain0_init_depositor,
             chain1_init_depositor,
+            fee,
         } => create_pool(
             deps,
             env,
@@ -59,21 +69,22 @@ pub fn execute(
             token1,
             chain0_init_depositor,
             chain1_init_depositor,
+            fee,
         ),
         ExecuteMsg::Swap {
             chain_from_id,
             chain_to_id,
             token_from,
             token_to,
-            sender,
             receiver,
             amount,
         } => swap(
+            deps,
+            info,
             chain_from_id,
             chain_to_id,
             token_from,
             token_to,
-            sender,
             receiver,
             amount,
         ),
@@ -84,7 +95,9 @@ pub fn execute(
             amount,
             sender,
             receiver,
-        } => add_liquidity(deps, pool_id, chain_id, token, amount, sender, receiver),
+        } => add_liquidity(
+            deps, info, pool_id, chain_id, token, amount, sender, receiver,
+        ),
         ExecuteMsg::RemoveLiquidity {
             chain0_id,
             chain1_id,
@@ -96,19 +109,55 @@ pub fn execute(
         } => remove_liquidity(
             deps, info, chain0_id, chain1_id, token0, token1, receiver0, receiver1, amount,
         ),
-        ExecuteMsg::RegisterChain { chain_id, factory } => register_chain(deps, chain_id, factory),
+        ExecuteMsg::RegisterChain {
+            chain_id,
+            chain_name,
+            factory,
+        } => register_chain(deps, chain_id, chain_name, factory),
+        ExecuteMsg::UpdateConfig {
+            new_deadline,
+            new_fee,
+            new_admin,
+            new_event_tracker,
+        } => {
+            STATE.update(deps.storage, |mut state| -> StdResult<_> {
+                assert!(state.admin.eq(&info.sender));
+                if let Some(new_deadline) = new_deadline {
+                    state.deadline = new_deadline;
+                }
+                if let Some(new_fee) = new_fee {
+                    state.fee = new_fee;
+                }
+                if let Some(new_admin) = new_admin {
+                    state.admin = new_admin;
+                }
+                if let Some(new_event_tracker) = new_event_tracker {
+                    state.event_tracker = new_event_tracker;
+                }
+                Ok(state)
+            })?;
+            Ok(Response::new())
+        }
     }
 }
 
 fn register_chain(
     deps: DepsMut,
     chain_id: Uint256,
+    chain_name: String,
     factory: String,
 ) -> Result<Response<PalomaMsg>, ContractError> {
     let binding = chain_id.to_be_bytes();
     let chain_id_key = binding.as_slice();
-    assert!(!POOL_FACTORIES.has(deps.storage, chain_id_key));
-    POOL_FACTORIES.save(deps.storage, chain_id_key, &factory)?;
+    assert!(!CHAIN_INFO.has(deps.storage, chain_id_key));
+    CHAIN_INFO.save(
+        deps.storage,
+        chain_id_key,
+        &ChainInfo {
+            chain_name,
+            factory,
+        },
+    )?;
     Ok(Response::new())
 }
 
@@ -122,9 +171,10 @@ fn create_pool(
     token1: String,
     chain0_init_depositor: String,
     chain1_init_depositor: String,
+    fee: u16,
 ) -> Result<Response<PalomaMsg>, ContractError> {
     assert!(chain0_id < chain1_id);
-
+    assert!(fee < 10000);
     let pool_meta_info = PoolMetaInfo {
         chain0_id,
         chain1_id,
@@ -139,9 +189,9 @@ fn create_pool(
         let pool_info = POOLS_INFO.load(deps.storage, id.to_be_bytes().as_slice())?;
         if (pool_info.amount0.is_zero() || pool_info.amount1.is_zero())
             && pool_info
-                .timestamp
-                .plus_seconds(DEADLINE.load(deps.storage)?)
-                < env.block.time
+            .timestamp
+            .plus_seconds(STATE.load(deps.storage)?.deadline)
+            < env.block.time
         {
             pool_id = id;
         } else {
@@ -153,10 +203,9 @@ fn create_pool(
             });
         }
     } else {
-        pool_id = POOLS_COUNT.load(deps.storage)?;
+        pool_id = STATE.load(deps.storage)?.pools_count;
     }
     let pool_info = PoolInfo {
-        pool_id,
         meta: pool_meta_info,
         amount0: Uint256::zero(),
         amount1: Uint256::zero(),
@@ -166,6 +215,7 @@ fn create_pool(
         timestamp: env.block.time,
         chain0_init_depositor,
         chain1_init_depositor,
+        fee,
     };
 
     POOL_IDS.save(deps.storage, meta_info_key, &pool_id)?;
@@ -180,8 +230,12 @@ fn create_pool(
             length: 0,
         },
     )?;
+    STATE.update(deps.storage, |mut state| -> StdResult<_> {
+        state.pools_count.add_assign(Uint256::from(1u8));
+        Ok(state)
+    })?;
     #[allow(deprecated)]
-    let contract = Contract {
+        let contract = Contract {
         constructor: None,
         functions: BTreeMap::from_iter(vec![(
             "create_pool".to_string(),
@@ -212,7 +266,9 @@ fn create_pool(
 
     Ok(Response::new()
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: POOL_FACTORIES.load(deps.storage, chain0_id.to_be_bytes().as_slice())?,
+            job_id: CHAIN_INFO
+                .load(deps.storage, chain0_id.to_be_bytes().as_slice())?
+                .factory,
             payload: Binary(
                 contract
                     .function("create_pool")
@@ -225,7 +281,9 @@ fn create_pool(
             ),
         }))
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: POOL_FACTORIES.load(deps.storage, chain1_id.to_be_bytes().as_slice())?,
+            job_id: CHAIN_INFO
+                .load(deps.storage, chain1_id.to_be_bytes().as_slice())?
+                .factory,
             payload: Binary(
                 contract
                     .function("create_pool")
@@ -240,19 +298,168 @@ fn create_pool(
 }
 
 fn swap(
-    _chain_from_id: Uint256,
-    _chain_to_id: Uint256,
-    _token_from: String,
-    _token_to: String,
-    _sender: String,
-    _receiver: String,
-    _amount: Uint256,
+    deps: DepsMut,
+    info: MessageInfo,
+    chain_from_id: Uint256,
+    chain_to_id: Uint256,
+    token_from: String,
+    token_to: String,
+    receiver: String,
+    amount: Uint256,
 ) -> Result<Response<PalomaMsg>, ContractError> {
-    unimplemented!()
+    let msg_sender = STATE.load(deps.storage)?.event_tracker;
+    assert!(info.sender.eq(&msg_sender));
+    let (chain0_id, chain1_id, token0, token1, is_chain0) = if chain_from_id < chain_to_id {
+        (chain_from_id, chain_to_id, token_from, token_to, true)
+    } else {
+        (chain_to_id, chain_from_id, token_to, token_from, false)
+    };
+    let pool_meta_info = PoolMetaInfo {
+        chain0_id,
+        chain1_id,
+        token0,
+        token1,
+    };
+    let binding = to_binary(&pool_meta_info)?;
+    let meta_info_key = binding.as_slice();
+    let pool_id = POOL_IDS.load(deps.storage, meta_info_key)?;
+    let binding = pool_id.to_be_bytes();
+    let pool_id_key = binding.as_slice();
+    let mut pool_info = POOLS_INFO.load(deps.storage, pool_id_key)?;
+    let management_fee = STATE.load(deps.storage)?.fee;
+    let management_fee = Uint256::try_from(
+        Uint512::from(pool_info.fee)
+            .mul(Uint512::from(management_fee))
+            .mul(Uint512::from(amount))
+            .div(Uint512::from(100_000_000u32)),
+    )
+        .unwrap();
+    let to_amount;
+    if is_chain0 {
+        to_amount = Uint256::try_from(
+            Uint512::from(10_000 - pool_info.fee)
+                .mul(Uint512::from(amount))
+                .mul(Uint512::from(pool_info.amount1))
+                .div(
+                    Uint512::from(10_000 - pool_info.fee)
+                        .mul(Uint512::from(amount))
+                        .add(Uint512::from(pool_info.amount0).mul(Uint512::from(10_000u16))),
+                ),
+        )
+            .unwrap();
+        pool_info.amount0.add_assign(amount - management_fee);
+        pool_info.amount1.sub_assign(to_amount);
+    } else {
+        to_amount = Uint256::try_from(
+            Uint512::from(10_000 - pool_info.fee)
+                .mul(Uint512::from(amount))
+                .mul(Uint512::from(pool_info.amount0))
+                .div(
+                    Uint512::from(10_000 - pool_info.fee)
+                        .mul(Uint512::from(amount))
+                        .add(Uint512::from(pool_info.amount1).mul(Uint512::from(10_000u16))),
+                ),
+        )
+            .unwrap();
+        pool_info.amount1.add_assign(amount - management_fee);
+        pool_info.amount0.sub_assign(to_amount);
+    }
+    POOLS_INFO.save(deps.storage, pool_id_key, &pool_info)?;
+    #[allow(deprecated)]
+        let contract = Contract {
+        constructor: None,
+        functions: BTreeMap::from_iter(vec![
+            (
+                "swap_out".to_string(),
+                vec![Function {
+                    name: "swap_out".to_string(),
+                    inputs: vec![
+                        Param {
+                            name: "pool_id".to_string(),
+                            kind: ParamType::Uint(256),
+                            internal_type: None,
+                        },
+                        Param {
+                            name: "amount".to_string(),
+                            kind: ParamType::Uint(256),
+                            internal_type: None,
+                        },
+                        Param {
+                            name: "recipient".to_string(),
+                            kind: ParamType::Address,
+                            internal_type: None,
+                        },
+                    ],
+                    outputs: Vec::new(),
+                    constant: None,
+                    state_mutability: StateMutability::NonPayable,
+                }],
+            ),
+            (
+                "withdraw_fee".to_string(),
+                vec![Function {
+                    name: "withdraw_fee".to_string(),
+                    inputs: vec![
+                        Param {
+                            name: "pool_id".to_string(),
+                            kind: ParamType::Uint(256),
+                            internal_type: None,
+                        },
+                        Param {
+                            name: "amount".to_string(),
+                            kind: ParamType::Uint(256),
+                            internal_type: None,
+                        },
+                    ],
+                    outputs: Vec::new(),
+                    constant: None,
+                    state_mutability: StateMutability::NonPayable,
+                }],
+            ),
+        ]),
+        events: BTreeMap::new(),
+        errors: BTreeMap::new(),
+        receive: false,
+        fallback: false,
+    };
+
+    Ok(Response::new()
+        .add_message(CosmosMsg::Custom(PalomaMsg {
+            job_id: CHAIN_INFO
+                .load(deps.storage, &chain_to_id.to_be_bytes())?
+                .factory,
+            payload: Binary(
+                contract
+                    .function("swap_out")
+                    .unwrap()
+                    .encode_input(&[
+                        Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(to_amount.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(receiver.as_str()).unwrap()),
+                    ])
+                    .unwrap(),
+            ),
+        }))
+        .add_message(CosmosMsg::Custom(PalomaMsg {
+            job_id: CHAIN_INFO
+                .load(deps.storage, &chain_from_id.to_be_bytes())?
+                .factory,
+            payload: Binary(
+                contract
+                    .function("withdraw_fee")
+                    .unwrap()
+                    .encode_input(&[
+                        Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(management_fee.to_string().as_str()).unwrap()),
+                    ])
+                    .unwrap(),
+            ),
+        })))
 }
 
 fn add_liquidity(
     deps: DepsMut,
+    info: MessageInfo,
     pool_id: Uint256,
     chain_id: Uint256,
     token: String,
@@ -260,6 +467,8 @@ fn add_liquidity(
     sender: String,
     receiver: Addr,
 ) -> Result<Response<PalomaMsg>, ContractError> {
+    let msg_sender = STATE.load(deps.storage)?.event_tracker;
+    assert!(info.sender.eq(&msg_sender));
     let binding = pool_id.to_be_bytes();
     let pool_id_key = binding.as_slice();
     let mut pool_info = POOLS_INFO.load(deps.storage, pool_id_key)?;
@@ -353,7 +562,7 @@ fn add_liquidity(
                 let id_key = binding.as_slice();
                 let mut liquidity_queue =
                     LIQUIDITY_QUEUE.load(deps.storage, (pool_id_key, id_key))?;
-                let input_token = match liquidity_queue.amount.cmp(&queue_amount) {
+                let (input_token0, input_token1) = match liquidity_queue.amount.cmp(&queue_amount) {
                     Ordering::Less => {
                         queue_amount -= liquidity_queue.amount;
                         id += 1;
@@ -364,7 +573,7 @@ fn add_liquidity(
                                     * Uint512::from(pool_info.amount0)
                                     / Uint512::from(pool_info.amount1),
                             )
-                            .unwrap()
+                                .unwrap()
                         } else {
                             pool_info.pending_amount0 -= liquidity_queue.amount;
                             Uint256::try_from(
@@ -372,7 +581,7 @@ fn add_liquidity(
                                     * Uint512::from(pool_info.amount1)
                                     / Uint512::from(pool_info.amount0),
                             )
-                            .unwrap()
+                                .unwrap()
                         };
                         if input_amount > new_amount {
                             input_amount -= new_amount;
@@ -380,24 +589,59 @@ fn add_liquidity(
                             queue_amount = Uint256::zero();
                             input_amount = Uint256::zero();
                         }
-                        liquidity_queue.amount
+                        if is_chain0 {
+                            (new_amount, liquidity_queue.amount)
+                        } else {
+                            (liquidity_queue.amount, new_amount)
+                        }
                     }
                     Ordering::Equal => {
                         liquidity_queue_id.length -= id + 1 - liquidity_queue_id.start;
                         liquidity_queue_id.start = id + 1;
-                        if is_chain0 {
+                        let new_amount = if is_chain0 {
                             pool_info.pending_amount1 -= queue_amount;
+                            Uint256::try_from(
+                                Uint512::from(queue_amount) * Uint512::from(pool_info.amount0)
+                                    / Uint512::from(pool_info.amount1),
+                            )
+                                .unwrap()
                         } else {
                             pool_info.pending_amount0 -= queue_amount;
+                            Uint256::try_from(
+                                Uint512::from(queue_amount) * Uint512::from(pool_info.amount1)
+                                    / Uint512::from(pool_info.amount0),
+                            )
+                                .unwrap()
                         };
                         queue_amount = Uint256::zero();
                         input_amount = Uint256::zero();
-                        queue_amount
+                        if is_chain0 {
+                            (new_amount, queue_amount)
+                        } else {
+                            (queue_amount, new_amount)
+                        }
                     }
                     Ordering::Greater => {
                         liquidity_queue.amount -= queue_amount;
                         liquidity_queue_id.length -= id - liquidity_queue_id.start;
                         liquidity_queue_id.start = id;
+
+                        let new_amount = if is_chain0 {
+                            pool_info.pending_amount1 -= queue_amount;
+                            Uint256::try_from(
+                                Uint512::from(queue_amount) * Uint512::from(pool_info.amount0)
+                                    / Uint512::from(pool_info.amount1),
+                            )
+                                .unwrap()
+                        } else {
+                            pool_info.pending_amount0 -= queue_amount;
+                            Uint256::try_from(
+                                Uint512::from(queue_amount) * Uint512::from(pool_info.amount1)
+                                    / Uint512::from(pool_info.amount0),
+                            )
+                                .unwrap()
+                        };
+
                         if is_chain0 {
                             pool_info.pending_amount1 -= queue_amount;
                         } else {
@@ -410,25 +654,27 @@ fn add_liquidity(
                         )?;
                         queue_amount = Uint256::zero();
                         input_amount = Uint256::zero();
-                        queue_amount
+                        if is_chain0 {
+                            (new_amount, queue_amount)
+                        } else {
+                            (queue_amount, new_amount)
+                        }
                     }
                 };
 
-                let liq = if is_chain0 {
-                    Uint256::try_from(
-                        Uint512::from(input_token) * Uint512::from(pool_info.amount0)
-                            / Uint512::from(pool_info.amount1)
-                            * Uint512::from(input_token).isqrt(),
-                    )
-                    .unwrap()
-                } else {
-                    Uint256::try_from(
-                        Uint512::from(input_token) * Uint512::from(pool_info.amount1)
-                            / Uint512::from(pool_info.amount0)
-                            * Uint512::from(input_token).isqrt(),
-                    )
-                    .unwrap()
-                };
+                let liq0 = Uint256::try_from(
+                    Uint512::from(input_token0) * Uint512::from(pool_info.total_liquidity)
+                        / Uint512::from(pool_info.amount0),
+                )
+                    .unwrap();
+                let liq1 = Uint256::try_from(
+                    Uint512::from(input_token1) * Uint512::from(pool_info.total_liquidity)
+                        / Uint512::from(pool_info.amount1),
+                )
+                    .unwrap();
+                pool_info.amount0 -= input_token0;
+                pool_info.amount1 -= input_token1;
+                let liq = min(liq0, liq1);
                 LIQUIDITY.update(
                     deps.storage,
                     (pool_id_key, receiver.as_bytes()),
@@ -539,7 +785,7 @@ fn remove_liquidity(
         },
     )?;
     #[allow(deprecated)]
-    let contract = Contract {
+        let contract = Contract {
         constructor: None,
         functions: BTreeMap::from_iter(vec![(
             "remove_liquidity".to_string(),
@@ -575,13 +821,15 @@ fn remove_liquidity(
 
     Ok(Response::new()
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: POOL_FACTORIES.load(deps.storage, &chain0_id.to_be_bytes())?,
+            job_id: CHAIN_INFO
+                .load(deps.storage, &chain0_id.to_be_bytes())?
+                .factory,
             payload: Binary(
                 contract
                     .function("remove_liquidity")
                     .unwrap()
                     .encode_input(&[
-                        Token::Uint(Uint::from_str(chain0_id.to_string().as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
                         Token::Uint(Uint::from_str(amount0.to_string().as_str()).unwrap()),
                         Token::Address(Address::from_str(receiver0.as_str()).unwrap()),
                     ])
@@ -589,13 +837,15 @@ fn remove_liquidity(
             ),
         }))
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: POOL_FACTORIES.load(deps.storage, &chain1_id.to_be_bytes())?,
+            job_id: CHAIN_INFO
+                .load(deps.storage, &chain1_id.to_be_bytes())?
+                .factory,
             payload: Binary(
                 contract
                     .function("remove_liquidity")
                     .unwrap()
                     .encode_input(&[
-                        Token::Uint(Uint::from_str(chain1_id.to_string().as_str()).unwrap()),
+                        Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
                         Token::Uint(Uint::from_str(amount1.to_string().as_str()).unwrap()),
                         Token::Address(Address::from_str(receiver1.as_str()).unwrap()),
                     ])
@@ -606,8 +856,43 @@ fn remove_liquidity(
 
 /// Query data from this contract. Currently no query interface is provided.
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
-    unimplemented!()
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::ChainInfo { chain_id } => {
+            to_binary(&CHAIN_INFO.load(deps.storage, chain_id.to_be_bytes().as_slice())?)
+        }
+        QueryMsg::PoolId {
+            chain0_id,
+            chain1_id,
+            token0,
+            token1,
+        } => {
+            assert!(chain0_id < chain1_id);
+            let pool_meta_info = PoolMetaInfo {
+                chain0_id,
+                chain1_id,
+                token0,
+                token1,
+            };
+            let binding = to_binary(&pool_meta_info)?;
+            let meta_info_key = binding.as_slice();
+            to_binary(&POOL_IDS.load(deps.storage, meta_info_key)?)
+        }
+        QueryMsg::PoolInfo { pool_id } => {
+            to_binary(&POOLS_INFO.load(deps.storage, pool_id.to_be_bytes().as_slice())?)
+        }
+        QueryMsg::State {} => to_binary(&STATE.load(deps.storage)?),
+        QueryMsg::LiquidityQueue { pool_id } => {
+            to_binary(&LIQUIDITY_QUEUE_IDS.load(deps.storage, pool_id.to_be_bytes().as_slice())?)
+        }
+        QueryMsg::LiquidityQueueElement { pool_id, queue_id } => to_binary(&LIQUIDITY_QUEUE.load(
+            deps.storage,
+            (
+                pool_id.to_be_bytes().as_slice(),
+                queue_id.to_be_bytes().as_slice(),
+            ),
+        )?),
+    }
 }
 
 #[cfg(test)]
