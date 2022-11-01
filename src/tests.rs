@@ -15,10 +15,13 @@ fn happy_path() -> Result<(), ContractError> {
     let _ = instantiate(
         deps.as_mut(),
         mock_env(),
-        info.clone(),
-        InstantiateMsg { deadline: 1000 },
+        info,
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker".to_string()),
+            deadline: 1000,
+        },
     )?;
-
+    let info = mock_info("tracker", &[]);
     let (chain0_id, chain1_id) = (42u32.into(), 52u32.into());
     let (token0, token1) = (
         "0123456789012345678901234567890123456789".to_string(),
@@ -32,7 +35,11 @@ fn happy_path() -> Result<(), ContractError> {
             deps.as_mut(),
             mock_env(),
             info.clone(),
-            ExecuteMsg::RegisterChain { chain_id, factory },
+            ExecuteMsg::RegisterChain {
+                chain_id,
+                chain_name: "test_chain_0".to_string(),
+                factory,
+            },
         )?;
         assert_eq!(r.messages.len(), 0);
     }
@@ -48,6 +55,7 @@ fn happy_path() -> Result<(), ContractError> {
             token1: token1.clone(),
             chain0_init_depositor: sender0.clone(),
             chain1_init_depositor: sender1.clone(),
+            fee: 30,
         },
     )?;
     assert_eq!(r.messages.len(), 2);
