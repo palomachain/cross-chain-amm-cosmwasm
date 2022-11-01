@@ -18,7 +18,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     /// Register a new chain.
     RegisterChain {
-        /// The chain ID.
+        /// The chain ID defined by administrator(can be different than chainId of EVM chains).
         chain_id: Uint256,
         /// Chain name i.e. "Ethereum mainnet".
         chain_name: String,
@@ -118,16 +118,16 @@ pub enum QueryMsg {
     /// Returns registered chain information.
     #[returns(ChainInfo)]
     ChainInfo {
-        /// Chain Id.
+        /// Chain Id to get chain information.
         chain_id: Uint256,
     },
 
     /// Returns pool_id number from chain and token information.
     #[returns(Uint256)]
     PoolId {
-        /// Chain 0 Id.
+        /// Chain 0 Id of the pool.
         chain0_id: Uint256,
-        /// Chain 1 Id.
+        /// Chain 1 Id of the pool.
         chain1_id: Uint256,
         /// Token address on chain 0.
         token0: String,
@@ -137,7 +137,7 @@ pub enum QueryMsg {
     /// Returns pool information from pool_id.
     #[returns(PoolInfo)]
     PoolInfo {
-        /// Pool id.
+        /// Pool id to get Pool information.
         pool_id: Uint256,
     },
 
@@ -148,16 +148,16 @@ pub enum QueryMsg {
     /// Returns liquidity queue information.
     #[returns(QueueID)]
     LiquidityQueue {
-        /// Pool id.
+        /// Pool id to get liquidity queue information.
         pool_id: Uint256,
     },
 
     /// Returns liquidity queue element data from pool_id and queue_id.
     #[returns(LiquidityQueueElement)]
     LiquidityQueueElement {
-        /// Pool id.
+        /// Pool id to get liquidity queue element.
         pool_id: Uint256,
-        /// Queue id.
+        /// The sequence number to get liquidity queue element of the pool.
         queue_id: u64,
     },
 }
