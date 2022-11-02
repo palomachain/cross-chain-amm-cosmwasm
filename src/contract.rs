@@ -173,7 +173,26 @@ fn create_pool(
     chain1_init_depositor: String,
     fee: u16,
 ) -> Result<Response<PalomaMsg>, ContractError> {
-    assert!(chain0_id < chain1_id);
+    let (chain0_id, chain1_id, token0, token1, chain0_init_depositor, chain1_init_depositor) =
+        if chain0_id > chain1_id || (chain0_id == chain1_id && token1 < token0) {
+            (
+                chain1_id,
+                chain0_id,
+                token1,
+                token0,
+                chain1_init_depositor,
+                chain0_init_depositor,
+            )
+        } else {
+            (
+                chain0_id,
+                chain1_id,
+                token0,
+                token1,
+                chain0_init_depositor,
+                chain1_init_depositor,
+            )
+        };
     assert!(fee < 10000);
     let pool_meta_info = PoolMetaInfo {
         chain0_id,
@@ -756,7 +775,12 @@ fn remove_liquidity(
     receiver1: String,
     amount: Uint256,
 ) -> Result<Response<PalomaMsg>, ContractError> {
-    assert!(chain0_id < chain1_id);
+    let (chain0_id, chain1_id, token0, token1, receiver0, receiver1) =
+        if chain0_id > chain1_id || (chain0_id == chain1_id && token1 < token0) {
+            (chain1_id, chain0_id, token1, token0, receiver1, receiver0)
+        } else {
+            (chain0_id, chain1_id, token0, token1, receiver0, receiver1)
+        };
     let pool_meta_info = PoolMetaInfo {
         chain0_id,
         chain1_id,
@@ -869,7 +893,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             token0,
             token1,
         } => {
-            assert!(chain0_id < chain1_id);
+            let (chain0_id, chain1_id, token0, token1) =
+                if chain0_id > chain1_id || (chain0_id == chain1_id && token1 < token0) {
+                    (chain1_id, chain0_id, token1, token0)
+                } else {
+                    (chain0_id, chain1_id, token0, token1)
+                };
             let pool_meta_info = PoolMetaInfo {
                 chain0_id,
                 chain1_id,
