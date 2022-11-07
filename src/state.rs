@@ -6,11 +6,11 @@ use cw_storage_plus::{Item, Map};
 
 /// Target chain information.
 #[cw_serde]
-pub struct ChainInfo {
-    /// Chain name string. i.e. "Ethereum mainnet".
-    pub chain_name: String,
-    /// Factory Vyper smart contract address on the target chain.
-    pub factory: String,
+pub struct JobInfo {
+    /// Chain_id to get job_id.
+    pub chain_id: Uint256,
+    /// job name string to get job_id.
+    pub job: String,
 }
 
 /// Metadata definiting a pool.
@@ -69,8 +69,8 @@ pub struct State {
 /// Item for storing configuration state.
 pub const STATE: Item<State> = Item::new("state");
 
-/// Mapping from `chain_id` to factory contract `job_id`.
-pub const CHAIN_INFO: Map<&[u8], ChainInfo> = Map::new("chain_info");
+/// Mapping from `chain_id` and `job` to `job_id`.
+pub const JOB_INFO: Map<&[u8], String> = Map::new("job_info");
 
 /// Mapping from `chain_id` to information about its creation.
 pub const POOLS_INFO: Map<&[u8], PoolInfo> = Map::new("pools_info");

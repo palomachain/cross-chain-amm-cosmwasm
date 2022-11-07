@@ -17,28 +17,27 @@ fn happy_path() -> Result<(), ContractError> {
         mock_env(),
         info,
         InstantiateMsg {
-            event_tracker: Addr::unchecked("tracker".to_string()),
+            event_tracker: Addr::unchecked("admin0000".to_string()),
             deadline: 1000,
         },
     )?;
-    let info = mock_info("tracker", &[]);
+    let info = mock_info("admin0000", &[]);
     let (chain0_id, chain1_id) = (42u32.into(), 52u32.into());
     let (token0, token1) = (
         "0123456789012345678901234567890123456789".to_string(),
         "abcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string(),
     );
-    let (factory0, factory1) = ("abcd".to_string(), "wxyz".to_string());
     let (sender0, sender1) = ("addr01234".to_string(), "addr98765".to_string());
 
-    for (chain_id, factory) in [(chain0_id, factory0), (chain1_id, factory1)] {
+    for chain_id in [chain0_id, chain1_id] {
         let r = execute(
             deps.as_mut(),
             mock_env(),
             info.clone(),
-            ExecuteMsg::RegisterChain {
+            ExecuteMsg::RegisterJobId {
                 chain_id,
-                chain_name: "test_chain_0".to_string(),
-                factory,
+                job: "create_pool".to_string(),
+                job_id: "00000".to_string(),
             },
         )?;
         assert_eq!(r.messages.len(), 0);

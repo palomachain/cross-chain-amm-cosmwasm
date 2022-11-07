@@ -1,6 +1,6 @@
 //! Messages used to instantiate/execute/query the contract.
 
-use crate::state::{ChainInfo, LiquidityQueueElement, PoolInfo, QueueID, State};
+use crate::state::{LiquidityQueueElement, PoolInfo, QueueID, State};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, CustomMsg, Uint256};
 
@@ -17,13 +17,13 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     /// Register a new chain.
-    RegisterChain {
+    RegisterJobId {
         /// The chain ID defined by administrator(can be different than chainId of EVM chains).
         chain_id: Uint256,
-        /// Chain name i.e. "Ethereum mainnet".
-        chain_name: String,
+        /// Job name i.e. "create_pool".
+        job: String,
         /// The factory contract we will use to mint tokens.
-        factory: String,
+        job_id: String,
     },
     /// Instantiate a new pool.
     CreatePool {
@@ -44,14 +44,12 @@ pub enum ExecuteMsg {
     },
     /// Initiate a swap.
     Swap {
+        /// Pool to swap.
+        pool_id: Uint256,
         /// Source chain id.
         chain_from_id: Uint256,
-        /// Target chain id.
-        chain_to_id: Uint256,
         /// Source chain token.
         token_from: String,
-        /// Target chain token.
-        token_to: String,
         /// Target account.
         receiver: String,
         /// Amount to transfer.
@@ -116,10 +114,12 @@ pub struct PalomaMsg {
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     /// Returns registered chain information.
-    #[returns(ChainInfo)]
-    ChainInfo {
+    #[returns(String)]
+    JobInfo {
         /// Chain Id to get chain information.
         chain_id: Uint256,
+        /// Job name in string
+        job: String,
     },
 
     /// Returns pool_id number from chain and token information.

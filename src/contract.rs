@@ -16,8 +16,8 @@ use std::str::FromStr;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, PalomaMsg, QueryMsg};
 use crate::state::{
-    ChainInfo, LiquidityQueueElement, PoolInfo, PoolMetaInfo, QueueID, State, CHAIN_INFO,
-    LIQUIDITY, LIQUIDITY_QUEUE, LIQUIDITY_QUEUE_IDS, POOLS_INFO, POOL_IDS, STATE,
+    JobInfo, LiquidityQueueElement, PoolInfo, PoolMetaInfo, QueueID, State, JOB_INFO, LIQUIDITY,
+    LIQUIDITY_QUEUE, LIQUIDITY_QUEUE_IDS, POOLS_INFO, POOL_IDS, STATE,
 };
 
 const MIN_LIQUIDITY: u16 = 1000u16;
@@ -72,19 +72,17 @@ pub fn execute(
             fee,
         ),
         ExecuteMsg::Swap {
+            pool_id,
             chain_from_id,
-            chain_to_id,
             token_from,
-            token_to,
             receiver,
             amount,
         } => swap(
             deps,
             info,
+            pool_id,
             chain_from_id,
-            chain_to_id,
             token_from,
-            token_to,
             receiver,
             amount,
         ),
@@ -109,11 +107,11 @@ pub fn execute(
         } => remove_liquidity(
             deps, info, chain0_id, chain1_id, token0, token1, receiver0, receiver1, amount,
         ),
-        ExecuteMsg::RegisterChain {
+        ExecuteMsg::RegisterJobId {
             chain_id,
-            chain_name,
-            factory,
-        } => register_chain(deps, chain_id, chain_name, factory),
+            job,
+            job_id,
+        } => register_job_id(deps, info, chain_id, job, job_id),
         ExecuteMsg::UpdateConfig {
             new_deadline,
             new_fee,
@@ -141,23 +139,20 @@ pub fn execute(
     }
 }
 
-fn register_chain(
+fn register_job_id(
     deps: DepsMut,
+    info: MessageInfo,
     chain_id: Uint256,
-    chain_name: String,
-    factory: String,
+    job: String,
+    job_id: String,
 ) -> Result<Response<PalomaMsg>, ContractError> {
-    let binding = chain_id.to_be_bytes();
-    let chain_id_key = binding.as_slice();
-    assert!(!CHAIN_INFO.has(deps.storage, chain_id_key));
-    CHAIN_INFO.save(
-        deps.storage,
-        chain_id_key,
-        &ChainInfo {
-            chain_name,
-            factory,
-        },
-    )?;
+    let state = STATE.load(deps.storage)?;
+    assert!(state.admin.eq(&info.sender));
+    let job_info = JobInfo { chain_id, job };
+    let binding = to_binary(&job_info)?;
+    let job_key = binding.as_slice();
+    assert!(!JOB_INFO.has(deps.storage, job_key));
+    JOB_INFO.save(deps.storage, job_key, &job_id)?;
     Ok(Response::new())
 }
 
@@ -285,9 +280,14 @@ fn create_pool(
 
     Ok(Response::new()
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: CHAIN_INFO
-                .load(deps.storage, chain0_id.to_be_bytes().as_slice())?
-                .factory,
+            job_id: JOB_INFO.load(
+                deps.storage,
+                to_binary(&JobInfo {
+                    chain_id: chain0_id,
+                    job: "create_pool".to_string(),
+                })?
+                .as_slice(),
+            )?,
             payload: Binary(
                 contract
                     .function("create_pool")
@@ -300,9 +300,14 @@ fn create_pool(
             ),
         }))
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: CHAIN_INFO
-                .load(deps.storage, chain1_id.to_be_bytes().as_slice())?
-                .factory,
+            job_id: JOB_INFO.load(
+                deps.storage,
+                to_binary(&JobInfo {
+                    chain_id: chain1_id,
+                    job: "create_pool".to_string(),
+                })?
+                .as_slice(),
+            )?,
             payload: Binary(
                 contract
                     .function("create_pool")
@@ -320,32 +325,31 @@ fn create_pool(
 fn swap(
     deps: DepsMut,
     info: MessageInfo,
+    pool_id: Uint256,
     chain_from_id: Uint256,
-    chain_to_id: Uint256,
     token_from: String,
-    token_to: String,
     receiver: String,
     amount: Uint256,
 ) -> Result<Response<PalomaMsg>, ContractError> {
     let msg_sender = STATE.load(deps.storage)?.event_tracker;
     assert!(info.sender.eq(&msg_sender));
-    let (chain0_id, chain1_id, token0, token1, is_chain0) = if chain_from_id < chain_to_id {
-        (chain_from_id, chain_to_id, token_from, token_to, true)
-    } else {
-        (chain_to_id, chain_from_id, token_to, token_from, false)
-    };
-    let pool_meta_info = PoolMetaInfo {
-        chain0_id,
-        chain1_id,
-        token0,
-        token1,
-    };
-    let binding = to_binary(&pool_meta_info)?;
-    let meta_info_key = binding.as_slice();
-    let pool_id = POOL_IDS.load(deps.storage, meta_info_key)?;
     let binding = pool_id.to_be_bytes();
     let pool_id_key = binding.as_slice();
     let mut pool_info = POOLS_INFO.load(deps.storage, pool_id_key)?;
+    let (is_chain0, chain_to_id, token_to) =
+        if pool_info.meta.chain0_id == chain_from_id && pool_info.meta.token0 == token_from {
+            (
+                true,
+                pool_info.meta.chain1_id,
+                pool_info.meta.token1.clone(),
+            )
+        } else {
+            (
+                false,
+                pool_info.meta.chain0_id,
+                pool_info.meta.token0.clone(),
+            )
+        };
     let management_fee = STATE.load(deps.storage)?.fee;
     let management_fee = Uint256::try_from(
         Uint512::from(pool_info.fee)
@@ -400,6 +404,11 @@ fn swap(
                             internal_type: None,
                         },
                         Param {
+                            name: "token".to_string(),
+                            kind: ParamType::Address,
+                            internal_type: None,
+                        },
+                        Param {
                             name: "amount".to_string(),
                             kind: ParamType::Uint(256),
                             internal_type: None,
@@ -426,6 +435,11 @@ fn swap(
                             internal_type: None,
                         },
                         Param {
+                            name: "token".to_string(),
+                            kind: ParamType::Address,
+                            internal_type: None,
+                        },
+                        Param {
                             name: "amount".to_string(),
                             kind: ParamType::Uint(256),
                             internal_type: None,
@@ -445,15 +459,21 @@ fn swap(
 
     Ok(Response::new()
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: CHAIN_INFO
-                .load(deps.storage, &chain_to_id.to_be_bytes())?
-                .factory,
+            job_id: JOB_INFO.load(
+                deps.storage,
+                to_binary(&JobInfo {
+                    chain_id: chain_to_id,
+                    job: "swap_out".to_string(),
+                })?
+                .as_slice(),
+            )?,
             payload: Binary(
                 contract
                     .function("swap_out")
                     .unwrap()
                     .encode_input(&[
                         Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(token_to.as_str()).unwrap()),
                         Token::Uint(Uint::from_str(to_amount.to_string().as_str()).unwrap()),
                         Token::Address(Address::from_str(receiver.as_str()).unwrap()),
                     ])
@@ -461,15 +481,21 @@ fn swap(
             ),
         }))
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: CHAIN_INFO
-                .load(deps.storage, &chain_from_id.to_be_bytes())?
-                .factory,
+            job_id: JOB_INFO.load(
+                deps.storage,
+                to_binary(&JobInfo {
+                    chain_id: chain_from_id,
+                    job: "withdraw_fee".to_string(),
+                })?
+                .as_slice(),
+            )?,
             payload: Binary(
                 contract
                     .function("withdraw_fee")
                     .unwrap()
                     .encode_input(&[
                         Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(token_from.as_str()).unwrap()),
                         Token::Uint(Uint::from_str(management_fee.to_string().as_str()).unwrap()),
                     ])
                     .unwrap(),
@@ -824,6 +850,11 @@ fn remove_liquidity(
                         internal_type: None,
                     },
                     Param {
+                        name: "token".to_string(),
+                        kind: ParamType::Address,
+                        internal_type: None,
+                    },
+                    Param {
                         name: "amount".to_string(),
                         kind: ParamType::Uint(256),
                         internal_type: None,
@@ -847,15 +878,21 @@ fn remove_liquidity(
 
     Ok(Response::new()
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: CHAIN_INFO
-                .load(deps.storage, &chain0_id.to_be_bytes())?
-                .factory,
+            job_id: JOB_INFO.load(
+                deps.storage,
+                to_binary(&JobInfo {
+                    chain_id: chain0_id,
+                    job: "remove_liquidity".to_string(),
+                })?
+                .as_slice(),
+            )?,
             payload: Binary(
                 contract
                     .function("remove_liquidity")
                     .unwrap()
                     .encode_input(&[
                         Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(pool_meta_info.token0.as_str()).unwrap()),
                         Token::Uint(Uint::from_str(amount0.to_string().as_str()).unwrap()),
                         Token::Address(Address::from_str(receiver0.as_str()).unwrap()),
                     ])
@@ -863,15 +900,21 @@ fn remove_liquidity(
             ),
         }))
         .add_message(CosmosMsg::Custom(PalomaMsg {
-            job_id: CHAIN_INFO
-                .load(deps.storage, &chain1_id.to_be_bytes())?
-                .factory,
+            job_id: JOB_INFO.load(
+                deps.storage,
+                to_binary(&JobInfo {
+                    chain_id: chain1_id,
+                    job: "remove_liquidity".to_string(),
+                })?
+                .as_slice(),
+            )?,
             payload: Binary(
                 contract
                     .function("remove_liquidity")
                     .unwrap()
                     .encode_input(&[
                         Token::Uint(Uint::from_str(pool_id.to_string().as_str()).unwrap()),
+                        Token::Address(Address::from_str(pool_meta_info.token1.as_str()).unwrap()),
                         Token::Uint(Uint::from_str(amount1.to_string().as_str()).unwrap()),
                         Token::Address(Address::from_str(receiver1.as_str()).unwrap()),
                     ])
@@ -884,9 +927,10 @@ fn remove_liquidity(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::ChainInfo { chain_id } => {
-            to_binary(&CHAIN_INFO.load(deps.storage, chain_id.to_be_bytes().as_slice())?)
-        }
+        QueryMsg::JobInfo { chain_id, job } => to_binary(&JOB_INFO.load(
+            deps.storage,
+            to_binary(&JobInfo { chain_id, job })?.as_slice(),
+        )?),
         QueryMsg::PoolId {
             chain0_id,
             chain1_id,
