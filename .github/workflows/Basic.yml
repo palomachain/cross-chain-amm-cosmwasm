@@ -21,13 +21,8 @@ jobs:
           target: wasm32-unknown-unknown
           override: true
 
-      - name: Run unit tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: unit-test
-          args: --locked
-        env:
-          RUST_BACKTRACE: 1
+      - run: cargo check --verbose --locked --all-targets
+      - run: cargo test --verbose --locked --no-fail-fast
 
       - name: Compile WASM contract
         uses: actions-rs/cargo@v1
@@ -51,24 +46,9 @@ jobs:
           toolchain: stable
           override: true
           components: rustfmt, clippy
-
-      - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-      - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
-
-      - name: Generate Schema
-        uses: actions-rs/cargo@v1
-        with:
-          command: schema
-          args: --locked
+            - run: cargo fetch --verbose --locked
+      - run: cargo clippy --all --all-targets -- -D warnings
+      - run: cargo fmt --all -- --check
 
       - name: Schema Changes
         # fails if any changes not committed
