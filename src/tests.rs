@@ -1,10 +1,13 @@
 //! Smoke tests.
 
-use crate::contract::{execute, instantiate};
-use crate::msg::{ExecuteMsg, InstantiateMsg};
+use crate::contract::{execute, instantiate, query};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::state::State;
 use crate::ContractError;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::Addr;
+use cosmwasm_std::{to_binary, Addr, Isqrt, Uint256};
+
+const MIN_LIQUIDITY: u128 = 1000u128;
 
 /// Test instantiating the contract, creating a pool, adding liquidity and making a trade.
 #[test]
@@ -78,22 +81,392 @@ fn happy_path() -> Result<(), ContractError> {
         )?;
         assert_eq!(r.messages.len(), 0);
     }
+    Ok(())
+}
 
-    //let r = execute(
-    //    deps.as_mut(),
-    //    mock_env(),
-    //    info.clone(),
-    //    ExecuteMsg::Swap {
-    //        chain_from_id: chain0_id,
-    //        chain_to_id: chain1_id,
-    //        token_from: token0,
-    //        token_to: token1,
-    //        sender: sender0,
-    //        receiver: sender1,
-    //        amount: 5000u32.into(),
-    //    },
-    //)?;
-    //assert_eq!(r.messages.len(), 2);
+#[test]
+fn initialize_test() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info,
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let res = query(deps.as_ref(), mock_env(), QueryMsg::State {})?;
+    let expected = to_binary(&State {
+        admin: Addr::unchecked("admin0"),
+        event_tracker: Addr::unchecked("tracker0"),
+        pools_count: Uint256::zero(),
+        deadline: 1000,
+        fee: 3000,
+    })
+    .unwrap();
+    assert_eq!(res, expected);
+    Ok(())
+}
 
+#[test]
+fn register_job_test() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_eth".to_string(),
+        },
+    )?;
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::JobInfo {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+        },
+    )?;
+    let expected = to_binary(&"create_pool_eth".to_string()).unwrap();
+    assert_eq!(res, expected);
+    Ok(())
+}
+
+#[test]
+fn create_pool_test() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_eth".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_bnb".to_string(),
+        },
+    )?;
+    let res = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::CreatePool {
+            chain0_id: Uint256::from(0u8),
+            chain1_id: Uint256::from(0u8),
+            token0: "0x0000000000000000000000000000000000000000".to_string(),
+            token1: "0x0000000000000000000000000000000000000000".to_string(),
+            chain0_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            chain1_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            fee: 3000,
+        },
+    )?;
+    assert_eq!(res.messages.len(), 2);
+    Ok(())
+}
+
+/// Create pool chain(0)_token(base coin) - chain(1)_token(base coin)
+/// and add liquidity same amount(1e18).
+#[test]
+fn add_liquidity_test_0() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_eth".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_bnb".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::CreatePool {
+            chain0_id: Uint256::from(0u8),
+            chain1_id: Uint256::from(1u8),
+            token0: "0x0000000000000000000000000000000000000000".to_string(),
+            token1: "0x0000000000000000000000000000000000000000".to_string(),
+            chain0_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            chain1_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            fee: 3000,
+        },
+    )?;
+    let info = mock_info("tracker0", &[]);
+    let token_amount = 1_000_000_000_000_000_000u128;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(0u8),
+            token: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(1u8),
+            token: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::Liquidity {
+            pool_id: Default::default(),
+            owner: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let expected = to_binary(&Uint256::from(token_amount - MIN_LIQUIDITY)).unwrap();
+    assert_eq!(res, expected);
+    Ok(())
+}
+
+/// Create pool chain(0)_token(base coin) - chain(1)_token(0x1234567890123456789012345678901234567890)
+/// and add liquidity same amount(1e18).
+#[test]
+fn add_liquidity_test_1() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_eth".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_bnb".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::CreatePool {
+            chain0_id: Uint256::from(0u8),
+            chain1_id: Uint256::from(1u8),
+            token0: "0x0000000000000000000000000000000000000000".to_string(),
+            token1: "0x1234567890123456789012345678901234567890".to_string(),
+            chain0_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            chain1_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            fee: 3000,
+        },
+    )?;
+    let info = mock_info("tracker0", &[]);
+    let token_amount = 1_000_000_000_000_000_000u128;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(0u8),
+            token: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(1u8),
+            token: "0x1234567890123456789012345678901234567890".to_string(),
+            amount: Uint256::from(token_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::Liquidity {
+            pool_id: Default::default(),
+            owner: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let expected = to_binary(&Uint256::from(token_amount - MIN_LIQUIDITY)).unwrap();
+    assert_eq!(res, expected);
+    Ok(())
+}
+
+/// Create pool chain(0)_token(base coin) - chain(1)_token(base coin)
+/// and add liquidity different amount.
+#[test]
+fn add_liquidity_test_2() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_eth".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_bnb".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::CreatePool {
+            chain0_id: Uint256::from(0u8),
+            chain1_id: Uint256::from(1u8),
+            token0: "0x0000000000000000000000000000000000000000".to_string(),
+            token1: "0x0000000000000000000000000000000000000000".to_string(),
+            chain0_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            chain1_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            fee: 3000,
+        },
+    )?;
+    let info = mock_info("tracker0", &[]);
+    let token0_amount = 1_000_000_000_000_000_000u128;
+    let token1_amount = 2_000_000_000_000_000_000u128;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(0u8),
+            token: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token0_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(1u8),
+            token: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token1_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::Liquidity {
+            pool_id: Default::default(),
+            owner: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let expected = to_binary(&Uint256::from(
+        (token0_amount * token1_amount).isqrt() - MIN_LIQUIDITY,
+    ))
+    .unwrap();
+    assert_eq!(res, expected);
     Ok(())
 }

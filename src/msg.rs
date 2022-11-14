@@ -160,6 +160,15 @@ pub enum QueryMsg {
         /// The sequence number to get liquidity queue element of the pool.
         queue_id: u64,
     },
+
+    /// Returns liquidity amount from pool_id and liquidity_owner.
+    #[returns(Uint256)]
+    Liquidity {
+        /// Pool id to get liquidity amount.
+        pool_id: Uint256,
+        /// liquidity owner in the pool.
+        owner: Addr,
+    },
 }
 
 impl CustomMsg for PalomaMsg {}

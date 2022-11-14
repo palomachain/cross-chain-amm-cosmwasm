@@ -967,6 +967,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 queue_id.to_be_bytes().as_slice(),
             ),
         )?),
+        QueryMsg::Liquidity { pool_id, owner } => to_binary(&LIQUIDITY.load(
+            deps.storage,
+            (pool_id.to_be_bytes().as_slice(), owner.as_bytes()),
+        )?),
     }
 }
 
