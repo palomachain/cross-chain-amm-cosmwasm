@@ -336,6 +336,7 @@ fn swap(
     let binding = pool_id.to_be_bytes();
     let pool_id_key = binding.as_slice();
     let mut pool_info = POOLS_INFO.load(deps.storage, pool_id_key)?;
+    assert!(!pool_info.total_liquidity.is_zero());
     let (is_chain0, chain_to_id, token_to) =
         if pool_info.meta.chain0_id == chain_from_id && pool_info.meta.token0 == token_from {
             (
@@ -660,12 +661,13 @@ fn add_liquidity(
                             )
                             .unwrap()
                         };
+                        let input_amount1 = queue_amount;
                         queue_amount = Uint256::zero();
                         input_amount = Uint256::zero();
                         if is_chain0 {
-                            (new_amount, queue_amount)
+                            (new_amount, input_amount1)
                         } else {
-                            (queue_amount, new_amount)
+                            (input_amount1, new_amount)
                         }
                     }
                     Ordering::Greater => {
@@ -689,22 +691,18 @@ fn add_liquidity(
                             .unwrap()
                         };
 
-                        if is_chain0 {
-                            pool_info.pending_amount1 -= queue_amount;
-                        } else {
-                            pool_info.pending_amount0 -= queue_amount;
-                        };
                         LIQUIDITY_QUEUE.save(
                             deps.storage,
                             (pool_id_key, id_key),
                             &liquidity_queue,
                         )?;
+                        let input_amount1 = queue_amount;
                         queue_amount = Uint256::zero();
                         input_amount = Uint256::zero();
                         if is_chain0 {
-                            (new_amount, queue_amount)
+                            (new_amount, input_amount1)
                         } else {
-                            (queue_amount, new_amount)
+                            (input_amount1, new_amount)
                         }
                     }
                 };
@@ -719,8 +717,8 @@ fn add_liquidity(
                         / Uint512::from(pool_info.amount1),
                 )
                 .unwrap();
-                pool_info.amount0 -= input_token0;
-                pool_info.amount1 -= input_token1;
+                pool_info.amount0 += input_token0;
+                pool_info.amount1 += input_token1;
                 let liq = min(liq0, liq1);
                 LIQUIDITY.update(
                     deps.storage,
@@ -759,7 +757,7 @@ fn add_liquidity(
                     (pool_id_key, 0u64.to_be_bytes().as_slice()),
                     &LiquidityQueueElement {
                         chain_id,
-                        amount,
+                        amount: input_amount,
                         receiver,
                     },
                 )?;
@@ -777,6 +775,7 @@ fn add_liquidity(
                 receiver,
             },
         )?;
+        liquidity_queue_id.start = 0;
         liquidity_queue_id.length = 1;
         LIQUIDITY_QUEUE_IDS.save(deps.storage, pool_id_key, &liquidity_queue_id)?;
         if is_chain0 {
