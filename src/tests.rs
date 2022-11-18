@@ -5,7 +5,7 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{LiquidityQueueElement, PoolInfo, QueueID, State};
 use crate::ContractError;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{to_binary, Addr, Isqrt, Uint256, from_binary};
+use cosmwasm_std::{from_binary, to_binary, Addr, Isqrt, Uint256};
 
 const MIN_LIQUIDITY: u128 = 1000u128;
 
@@ -569,7 +569,7 @@ fn add_liquidity_test_3() -> Result<(), ContractError> {
         mock_env(),
         QueryMsg::LiquidityQueueElement {
             pool_id: Default::default(),
-            queue_id: 0
+            queue_id: 0,
         },
     )?;
     let queue_element: LiquidityQueueElement = from_binary(&res).unwrap();
@@ -697,11 +697,14 @@ fn add_liquidity_test_4() -> Result<(), ContractError> {
         deps.as_ref(),
         mock_env(),
         QueryMsg::PoolInfo {
-            pool_id: Default::default()
-        }
+            pool_id: Default::default(),
+        },
     )?;
     let pool_info: PoolInfo = from_binary(&res).unwrap();
-    assert_eq!(Uint256::from((token0_amount * token1_amount).isqrt() * 2), pool_info.total_liquidity);
+    assert_eq!(
+        Uint256::from((token0_amount * token1_amount).isqrt() * 2),
+        pool_info.total_liquidity
+    );
     assert_eq!(pool_info.fee, 3000);
     assert_eq!(pool_info.amount0, Uint256::from(token0_amount * 2));
     assert_eq!(pool_info.amount1, Uint256::from(token1_amount * 2));
@@ -831,25 +834,39 @@ fn add_liquidity_test_5() -> Result<(), ContractError> {
         mock_env(),
         QueryMsg::LiquidityQueueElement {
             pool_id: Default::default(),
-            queue_id: 0
+            queue_id: 0,
         },
     )?;
     let liquidity_queue_element: LiquidityQueueElement = from_binary(&res).unwrap();
-    assert_eq!(Uint256::from(token0_amount / 2), liquidity_queue_element.amount);
+    assert_eq!(
+        Uint256::from(token0_amount / 2),
+        liquidity_queue_element.amount
+    );
 
     let res = query(
         deps.as_ref(),
         mock_env(),
         QueryMsg::PoolInfo {
-            pool_id: Default::default()
-        }
+            pool_id: Default::default(),
+        },
     )?;
     let pool_info: PoolInfo = from_binary(&res).unwrap();
 
-    assert_eq!(Uint256::from((token0_amount * token1_amount).isqrt() + (token0_amount * token1_amount).isqrt() / 2), pool_info.total_liquidity);
+    assert_eq!(
+        Uint256::from(
+            (token0_amount * token1_amount).isqrt() + (token0_amount * token1_amount).isqrt() / 2
+        ),
+        pool_info.total_liquidity
+    );
     assert_eq!(pool_info.fee, 3000);
-    assert_eq!(pool_info.amount0, Uint256::from(token0_amount + token0_amount / 2));
-    assert_eq!(pool_info.amount1, Uint256::from(token1_amount + token1_amount / 2));
+    assert_eq!(
+        pool_info.amount0,
+        Uint256::from(token0_amount + token0_amount / 2)
+    );
+    assert_eq!(
+        pool_info.amount1,
+        Uint256::from(token1_amount + token1_amount / 2)
+    );
     assert_eq!(pool_info.pending_amount0, Uint256::from(token0_amount / 2));
     assert_eq!(pool_info.pending_amount1, Uint256::zero());
     Ok(())
@@ -976,7 +993,7 @@ fn add_liquidity_test_6() -> Result<(), ContractError> {
         mock_env(),
         QueryMsg::LiquidityQueueElement {
             pool_id: Default::default(),
-            queue_id: 0
+            queue_id: 0,
         },
     )?;
     let liquidity_queue_element: LiquidityQueueElement = from_binary(&res).unwrap();
@@ -987,11 +1004,14 @@ fn add_liquidity_test_6() -> Result<(), ContractError> {
         deps.as_ref(),
         mock_env(),
         QueryMsg::PoolInfo {
-            pool_id: Default::default()
-        }
+            pool_id: Default::default(),
+        },
     )?;
     let pool_info: PoolInfo = from_binary(&res).unwrap();
-    assert_eq!(Uint256::from((token0_amount * token1_amount).isqrt() * 2), pool_info.total_liquidity);
+    assert_eq!(
+        Uint256::from((token0_amount * token1_amount).isqrt() * 2),
+        pool_info.total_liquidity
+    );
     assert_eq!(3000, pool_info.fee);
     assert_eq!(Uint256::from(token0_amount * 2), pool_info.amount0);
     assert_eq!(Uint256::from(token1_amount * 2), pool_info.amount1);
@@ -1177,7 +1197,7 @@ fn swap_test() -> Result<(), ContractError> {
             chain_from_id: Uint256::from(0u8),
             token_from: "0x0000000000000000000000000000000000000000".to_string(),
             amount: Uint256::from(token_amount),
-            receiver: "receiver".to_string()
+            receiver: "receiver".to_string(),
         },
     )?;
     assert_eq!(res.messages.len(), 1);
