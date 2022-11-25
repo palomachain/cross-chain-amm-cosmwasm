@@ -4,11 +4,18 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Timestamp, Uint256};
 use cw_storage_plus::{Item, Map};
 
+/// Target chain information.
+#[cw_serde]
+pub struct JobInfo {
+    /// Chain_id to get job_id.
+    pub chain_id: Uint256,
+    /// job name string to get job_id.
+    pub job: String,
+}
+
 /// Metadata definiting a pool.
 #[cw_serde]
 pub struct PoolInfo {
-    /// The ID for this pool.
-    pub pool_id: Uint256,
     /// Chain/token pairs to trade.
     pub meta: PoolMetaInfo,
     /// Source amount.
@@ -27,6 +34,8 @@ pub struct PoolInfo {
     pub chain0_init_depositor: String,
     /// Initial creator of `chain1`.
     pub chain1_init_depositor: String,
+    /// swapping fee.
+    pub fee: u16,
 }
 
 /// The chain/token pair which defines a pool.
@@ -42,20 +51,32 @@ pub struct PoolMetaInfo {
     pub token1: String,
 }
 
-/// Mapping from `chain_id` to factory contract `job_id`.
-pub const POOL_FACTORIES: Map<&[u8], String> = Map::new("pool_factories");
+/// Configuration state.
+#[cw_serde]
+pub struct State {
+    /// Administrator.
+    pub admin: Addr,
+    /// Event tracker from target chains.
+    pub event_tracker: Addr,
+    /// Current numbxer of pools.
+    pub pools_count: Uint256,
+    /// Interval before trades are considered invalid.
+    pub deadline: u64,
+    /// Management fee.
+    pub fee: u16,
+}
+
+/// Item for storing configuration state.
+pub const STATE: Item<State> = Item::new("state");
+
+/// Mapping from `chain_id` and `job` to `job_id`.
+pub const JOB_INFO: Map<&[u8], String> = Map::new("job_info");
 
 /// Mapping from `chain_id` to information about its creation.
 pub const POOLS_INFO: Map<&[u8], PoolInfo> = Map::new("pools_info");
 
 /// Mapping from meta info key to pool id.
 pub const POOL_IDS: Map<&[u8], Uint256> = Map::new("pools_ids");
-
-/// Current numbxer of pools.
-pub const POOLS_COUNT: Item<Uint256> = Item::new("pools_count");
-
-/// Interval before trades are considered invalid.
-pub const DEADLINE: Item<u64> = Item::new("deadline");
 
 /// Mapping from `(pool_id, receiver)` to an amount.
 pub const LIQUIDITY: Map<(&[u8], &[u8]), Uint256> = Map::new("liquidity");
