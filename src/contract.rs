@@ -363,11 +363,11 @@ fn swap(
     if is_chain0 {
         to_amount = Uint256::try_from(
             Uint512::from(10_000 - pool_info.fee)
-                .mul(Uint512::from(amount))
+                .mul(Uint512::from(amount - management_fee))
                 .mul(Uint512::from(pool_info.amount1))
                 .div(
                     Uint512::from(10_000 - pool_info.fee)
-                        .mul(Uint512::from(amount))
+                        .mul(Uint512::from(amount - management_fee))
                         .add(Uint512::from(pool_info.amount0).mul(Uint512::from(10_000u16))),
                 ),
         )
@@ -377,11 +377,11 @@ fn swap(
     } else {
         to_amount = Uint256::try_from(
             Uint512::from(10_000 - pool_info.fee)
-                .mul(Uint512::from(amount))
+                .mul(Uint512::from(amount - management_fee))
                 .mul(Uint512::from(pool_info.amount0))
                 .div(
                     Uint512::from(10_000 - pool_info.fee)
-                        .mul(Uint512::from(amount))
+                        .mul(Uint512::from(amount - management_fee))
                         .add(Uint512::from(pool_info.amount1).mul(Uint512::from(10_000u16))),
                 ),
         )
