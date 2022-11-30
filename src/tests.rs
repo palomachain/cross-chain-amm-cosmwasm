@@ -5,7 +5,7 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{LiquidityQueueElement, PoolInfo, QueueID, State};
 use crate::ContractError;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{from_binary, to_binary, Addr, Isqrt, Uint256};
+use cosmwasm_std::{from_binary, to_binary, Addr, CosmosMsg, Isqrt, Uint256, Uint512};
 
 const MIN_LIQUIDITY: u128 = 1000u128;
 
@@ -194,6 +194,12 @@ fn create_pool_test() -> Result<(), ContractError> {
         },
     )?;
     assert_eq!(res.messages.len(), 2);
+    let mut iter = res.messages.iter();
+    while let Some(msg) = iter.next() {
+        if let CosmosMsg::Custom(data) = msg.msg.clone() {
+            assert_eq!("create_pool_eth".to_string(), data.job_id);
+        }
+    }
     Ok(())
 }
 
@@ -1021,6 +1027,7 @@ fn add_liquidity_test_6() -> Result<(), ContractError> {
     Ok(())
 }
 
+#[test]
 fn remove_liquidity_test() -> Result<(), ContractError> {
     let mut deps = mock_dependencies();
     let info = mock_info("admin0", &[]);
@@ -1051,6 +1058,26 @@ fn remove_liquidity_test() -> Result<(), ContractError> {
             chain_id: Uint256::from(1u8),
             job: "create_pool".to_string(),
             job_id: "create_pool_bnb".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "remove_liquidity".to_string(),
+            job_id: "remove_liquidity".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "remove_liquidity".to_string(),
+            job_id: "remove_liquidity".to_string(),
         },
     )?;
     let _ = execute(
@@ -1105,8 +1132,8 @@ fn remove_liquidity_test() -> Result<(), ContractError> {
             chain1_id: Uint256::from(1u8),
             token0: "0x0000000000000000000000000000000000000000".to_string(),
             token1: "0x1234567890123456789012345678901234567890".to_string(),
-            receiver0: "receiver0".to_string(),
-            receiver1: "receiver1".to_string(),
+            receiver0: "0x1000000000000000000000000000000000000000".to_string(),
+            receiver1: "0x1000000000000000000000000000000000000000".to_string(),
             amount: Uint256::from(token_amount / 2),
         },
     )?;
@@ -1114,7 +1141,8 @@ fn remove_liquidity_test() -> Result<(), ContractError> {
     Ok(())
 }
 
-fn swap_test() -> Result<(), ContractError> {
+#[test]
+fn swap_test_0() -> Result<(), ContractError> {
     let mut deps = mock_dependencies();
     let info = mock_info("admin0", &[]);
     let _ = instantiate(
@@ -1150,6 +1178,47 @@ fn swap_test() -> Result<(), ContractError> {
         deps.as_mut(),
         mock_env(),
         info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "swap_out".to_string(),
+            job_id: "swap_out".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "swap_out".to_string(),
+            job_id: "swap_out".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "withdraw_fee".to_string(),
+            job_id: "withdraw_fee".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "withdraw_fee".to_string(),
+            job_id: "withdraw_fee".to_string(),
+        },
+    )?;
+    let pool_fee = 30u16;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
         ExecuteMsg::CreatePool {
             chain0_id: Uint256::from(0u8),
             chain1_id: Uint256::from(1u8),
@@ -1157,7 +1226,7 @@ fn swap_test() -> Result<(), ContractError> {
             token1: "0x1234567890123456789012345678901234567890".to_string(),
             chain0_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
             chain1_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
-            fee: 3000,
+            fee: pool_fee,
         },
     )?;
     let info = mock_info("tracker0", &[]);
@@ -1197,9 +1266,277 @@ fn swap_test() -> Result<(), ContractError> {
             chain_from_id: Uint256::from(0u8),
             token_from: "0x0000000000000000000000000000000000000000".to_string(),
             amount: Uint256::from(token_amount),
-            receiver: "receiver".to_string(),
+            receiver: "0x1000000000000000000000000000000000000000".to_string(),
         },
     )?;
-    assert_eq!(res.messages.len(), 1);
+    assert_eq!(res.messages.len(), 2);
+    let mut iter = res.messages.iter();
+    if let Some(msg) = iter.next() {
+        if let CosmosMsg::Custom(data) = msg.msg.clone() {
+            assert_eq!("swap_out".to_string(), data.job_id);
+        }
+    }
+    if let Some(msg) = iter.next() {
+        if let CosmosMsg::Custom(data) = msg.msg.clone() {
+            assert_eq!("withdraw_fee".to_string(), data.job_id);
+        }
+    }
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::PoolInfo {
+            pool_id: Default::default(),
+        },
+    )?;
+    let pool_info: PoolInfo = from_binary(&res).unwrap();
+    let management_fee = 3000u16;
+    let denominator = 10000u16;
+    let added_amount = Uint256::try_from(
+        Uint512::from(token_amount)
+            - (Uint512::from(token_amount)
+                * Uint512::from(management_fee)
+                * Uint512::from(pool_fee)
+                / Uint512::from(denominator)
+                / Uint512::from(denominator)),
+    )
+    .unwrap();
+    assert_eq!(
+        pool_info.amount0,
+        Uint256::from(token_amount) + added_amount
+    );
+    let subbed_amount = Uint256::try_from(
+        Uint512::from(added_amount)
+            * Uint512::from(token_amount)
+            * Uint512::from(denominator - pool_fee)
+            / (Uint512::from(added_amount) * Uint512::from(denominator - pool_fee)
+                + Uint512::from(token_amount) * Uint512::from(denominator)),
+    )
+    .unwrap();
+    assert_eq!(
+        pool_info.amount1,
+        Uint256::from(token_amount) - subbed_amount
+    );
+    assert_eq!(Uint256::zero(), pool_info.pending_amount0);
+    assert_eq!(Uint256::zero(), pool_info.pending_amount1);
+    assert_eq!(Uint256::from(token_amount), pool_info.total_liquidity);
+    Ok(())
+}
+
+#[test]
+fn swap_test_1() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_eth".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "create_pool".to_string(),
+            job_id: "create_pool_bnb".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "swap_out".to_string(),
+            job_id: "swap_out".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "swap_out".to_string(),
+            job_id: "swap_out".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(0u8),
+            job: "withdraw_fee".to_string(),
+            job_id: "withdraw_fee".to_string(),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::RegisterJobId {
+            chain_id: Uint256::from(1u8),
+            job: "withdraw_fee".to_string(),
+            job_id: "withdraw_fee".to_string(),
+        },
+    )?;
+    let pool_fee = 30u16;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::CreatePool {
+            chain0_id: Uint256::from(0u8),
+            chain1_id: Uint256::from(1u8),
+            token0: "0x0000000000000000000000000000000000000000".to_string(),
+            token1: "0x1234567890123456789012345678901234567890".to_string(),
+            chain0_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            chain1_init_depositor: "0x0000000000000000000000000000000000000001".to_string(),
+            fee: pool_fee,
+        },
+    )?;
+    let info = mock_info("tracker0", &[]);
+    let token_amount = 1_000_000_000_000_000_000u128;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(0u8),
+            token: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::AddLiquidity {
+            pool_id: Uint256::from(0u8),
+            chain_id: Uint256::from(1u8),
+            token: "0x1234567890123456789012345678901234567890".to_string(),
+            amount: Uint256::from(token_amount),
+            sender: "0x0000000000000000000000000000000000000001".to_string(),
+            receiver: Addr::unchecked("liquidity_adder"),
+        },
+    )?;
+    let res = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::Swap {
+            pool_id: Default::default(),
+            chain_from_id: Uint256::from(1u8),
+            token_from: "0x0000000000000000000000000000000000000000".to_string(),
+            amount: Uint256::from(token_amount),
+            receiver: "0x1000000000000000000000000000000000000000".to_string(),
+        },
+    )?;
+    assert_eq!(res.messages.len(), 2);
+    let mut iter = res.messages.iter();
+    if let Some(msg) = iter.next() {
+        if let CosmosMsg::Custom(data) = msg.msg.clone() {
+            assert_eq!("swap_out".to_string(), data.job_id);
+        }
+    }
+    if let Some(msg) = iter.next() {
+        if let CosmosMsg::Custom(data) = msg.msg.clone() {
+            assert_eq!("withdraw_fee".to_string(), data.job_id);
+        }
+    }
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::PoolInfo {
+            pool_id: Default::default(),
+        },
+    )?;
+    let pool_info: PoolInfo = from_binary(&res).unwrap();
+    let management_fee = 3000u16;
+    let denominator = 10000u16;
+    let added_amount = Uint256::try_from(
+        Uint512::from(token_amount)
+            - (Uint512::from(token_amount)
+                * Uint512::from(management_fee)
+                * Uint512::from(pool_fee)
+                / Uint512::from(denominator)
+                / Uint512::from(denominator)),
+    )
+    .unwrap();
+    let subbed_amount = Uint256::try_from(
+        Uint512::from(added_amount)
+            * Uint512::from(token_amount)
+            * Uint512::from(denominator - pool_fee)
+            / (Uint512::from(added_amount) * Uint512::from(denominator - pool_fee)
+                + Uint512::from(token_amount) * Uint512::from(denominator)),
+    )
+    .unwrap();
+    assert_eq!(
+        pool_info.amount0,
+        Uint256::from(token_amount) - subbed_amount
+    );
+    assert_eq!(
+        pool_info.amount1,
+        Uint256::from(token_amount) + added_amount
+    );
+    assert_eq!(Uint256::zero(), pool_info.pending_amount0);
+    assert_eq!(Uint256::zero(), pool_info.pending_amount1);
+    assert_eq!(Uint256::from(token_amount), pool_info.total_liquidity);
+    Ok(())
+}
+
+#[test]
+fn update_config_test() -> Result<(), ContractError> {
+    let mut deps = mock_dependencies();
+    let info = mock_info("admin0", &[]);
+    let _ = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        InstantiateMsg {
+            event_tracker: Addr::unchecked("tracker0".to_string()),
+            deadline: 1000,
+        },
+    )?;
+    let new_deadline = 2000u64;
+    let new_fee = 2500u16;
+    let new_admin = Addr::unchecked("admin1".to_string());
+    let new_event_tracker = Addr::unchecked("tracker1".to_string());
+
+    let _ = execute(
+        deps.as_mut(),
+        mock_env(),
+        info.clone(),
+        ExecuteMsg::UpdateConfig {
+            new_deadline: Some(new_deadline),
+            new_fee: Some(new_fee),
+            new_admin: Some(new_admin.clone()),
+            new_event_tracker: Some(new_event_tracker.clone()),
+        },
+    )?;
+    let res = query(deps.as_ref(), mock_env(), QueryMsg::State {}).unwrap();
+    let state: State = from_binary(&res).unwrap();
+    assert_eq!(state.deadline, new_deadline);
+    assert_eq!(state.fee, new_fee);
+    assert_eq!(state.admin, new_admin);
+    assert_eq!(state.event_tracker, new_event_tracker);
     Ok(())
 }
