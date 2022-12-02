@@ -541,12 +541,13 @@ fn add_liquidity(
         let mut id = liquidity_queue_id.start;
         let liquidity_queue =
             LIQUIDITY_QUEUE.load(deps.storage, (pool_id_key, id.to_be_bytes().as_slice()))?;
-        if liquidity_queue.chain_id == chain_id {
+        if liquidity_queue.chain_id == chain_id && liquidity_queue.token == token {
             LIQUIDITY_QUEUE.save(
                 deps.storage,
                 (pool_id_key, (id + 1).to_be_bytes().as_slice()),
                 &LiquidityQueueElement {
                     chain_id,
+                    token,
                     amount,
                     receiver,
                 },
@@ -631,12 +632,7 @@ fn add_liquidity(
                             )
                             .unwrap()
                         };
-                        if input_amount > new_amount {
-                            input_amount -= new_amount;
-                        } else {
-                            queue_amount = Uint256::zero();
-                            input_amount = Uint256::zero();
-                        }
+                        input_amount -= new_amount;
                         if is_chain0 {
                             (new_amount, liquidity_queue.amount)
                         } else {
@@ -757,6 +753,7 @@ fn add_liquidity(
                     (pool_id_key, 0u64.to_be_bytes().as_slice()),
                     &LiquidityQueueElement {
                         chain_id,
+                        token,
                         amount: input_amount,
                         receiver,
                     },
@@ -771,6 +768,7 @@ fn add_liquidity(
             (pool_id_key, 0u64.to_be_bytes().as_slice()),
             &LiquidityQueueElement {
                 chain_id,
+                token,
                 amount,
                 receiver,
             },
