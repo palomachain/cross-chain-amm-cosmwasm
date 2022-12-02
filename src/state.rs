@@ -95,6 +95,8 @@ pub struct QueueID {
 pub struct LiquidityQueueElement {
     /// Transferring chain id.
     pub chain_id: Uint256,
+    /// Transferring token address.
+    pub token: String,
     /// Amount to transfer.
     pub amount: Uint256,
     /// Receiving address.
